@@ -1,0 +1,58 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        var path = "/Volumes/Data-1/test"; // Updated SMB share path
+        Console.WriteLine($"Monitoring folder: {path}. Press any key to exit...");
+
+        var lastCheckedFiles = new Dictionary<string, (long size, DateTime lastModified)>();
+
+        while (true)
+        {
+            var currentFiles = Directory.GetFiles(path);
+
+            foreach (var file in currentFiles)
+            {
+                var fileInfo = new FileInfo(file);
+                if (!lastCheckedFiles.ContainsKey(file))
+                {
+                    lastCheckedFiles[file] = (fileInfo.Length, fileInfo.LastWriteTime);
+                    Console.WriteLine($"File created: {file}");
+
+                    // Check if the file is fully copied
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(5000); // Initial delay to ensure the file is fully copied
+
+                        long currentSize;
+                        DateTime currentLastModified;
+
+                        do
+                        {
+                            await Task.Delay(5000); // Check every 2 seconds
+                            currentSize = new FileInfo(file).Length;
+                            currentLastModified = new FileInfo(file).LastWriteTime;
+                        }
+                        while (currentSize != lastCheckedFiles[file].size || currentLastModified != lastCheckedFiles[file].lastModified);
+
+                        Console.WriteLine($"File finished copying: {file}");
+                    });
+                }
+            }
+
+            lastCheckedFiles.Clear();
+            foreach (var file in currentFiles)
+            {
+                var fileInfo = new FileInfo(file);
+                lastCheckedFiles[file] = (fileInfo.Length, fileInfo.LastWriteTime);
+            }
+
+            await Task.Delay(5000); // Poll every 2 seconds
+        }
+    }
+}

@@ -1,0 +1,54 @@
+﻿using System;
+using System.Diagnostics;
+using System.IO;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        var folderPath = "/Volumes/Data-1/test"; // Folder path to monitor
+        var lsofFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "lsof"); // Path to the lsof binary file in the output directory
+
+        // Initialize FileSystemWatcher
+        using var watcher = new FileSystemWatcher(folderPath);
+
+        watcher.EnableRaisingEvents = true;
+
+        watcher.Created += async (sender, e) =>
+        {
+            Console.WriteLine($"File created: {e.FullPath}");
+
+            // Wait for a short delay to ensure the file is fully copied
+            await Task.Delay(2000); // 2 seconds delay
+
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = lsofFilePath,
+                    Arguments = $"-t {e.FullPath}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            var output = await process.StandardOutput.ReadToEndAsync();
+            process.WaitForExit();
+
+            if (string.IsNullOrEmpty(output))
+            {
+                Console.WriteLine($"File finished copying: {e.FullPath}");
+            }
+            else
+            {
+                Console.WriteLine($"File still being written: {e.FullPath}");
+            }
+        };
+
+        Console.WriteLine($"Monitoring folder: {folderPath}. Press any key to exit...");
+        Console.ReadKey();
+    }
+}
