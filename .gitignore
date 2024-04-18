@@ -1,0 +1,17 @@
+# .NET
+*.obj
+*.dll
+*.exe
+*.pdb
+*.user
+*.suo
+*.cache
+*.bak
+*.log
+bin/
+obj/
+packages/
+*.swp
+
+# Visual Studio Code
+.vscode/

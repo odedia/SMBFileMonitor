@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
 
 class Program
 {
-    static async Task Main(string[] args)
+    static void Main(string[] args)
     {
-        var path = "/Volumes/Data-1/test"; // Updated SMB share path
+        var path = "/Volumes/Data-1/test/test"; // Updated SMB share path
         Console.WriteLine($"Monitoring folder: {path}. Press any key to exit...");
 
-        var lastCheckedFiles = new Dictionary<string, (long size, DateTime lastModified)>();
+        var activeFiles = new Dictionary<string, long>();
+        var completedFiles = new HashSet<string>();
 
         while (true)
         {
@@ -18,41 +18,60 @@ class Program
 
             foreach (var file in currentFiles)
             {
-                var fileInfo = new FileInfo(file);
-                if (!lastCheckedFiles.ContainsKey(file))
+                if (completedFiles.Contains(file))
                 {
-                    lastCheckedFiles[file] = (fileInfo.Length, fileInfo.LastWriteTime);
-                    Console.WriteLine($"File created: {file}");
+                    continue; // Skip files that are already completed
+                }
 
-                    // Check if the file is fully copied
-                    Task.Run(async () =>
+                long currentSize;
+
+                try
+                {
+                    using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                     {
-                        await Task.Delay(5000); // Initial delay to ensure the file is fully copied
+                        currentSize = stream.Length;
+                        Console.WriteLine($"Current size of {file} is {currentSize}");
+                    }
+                }
+                catch (IOException)
+                {
+                    // Failed to open the file; likely still being written to
+                    continue;
+                }
 
-                        long currentSize;
-                        DateTime currentLastModified;
+                if (!activeFiles.ContainsKey(file))
+                {
+                    activeFiles[file] = currentSize;
+                    Console.WriteLine($"File created: {file}");
+                    continue;
+                }
 
-                        do
+                if (currentSize == 0 || currentSize != activeFiles[file])
+                {
+                    activeFiles[file] = currentSize;
+                }
+                else
+                {
+                    // Try to acquire a lock on the file
+                    try
+                    {
+                        using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
                         {
-                            await Task.Delay(5000); // Check every 2 seconds
-                            currentSize = new FileInfo(file).Length;
-                            currentLastModified = new FileInfo(file).LastWriteTime;
+                            // If we can acquire a lock, the file is not being written to anymore
+                            Console.WriteLine($"File finished copying: {file}");
+                            completedFiles.Add(file);
+                            activeFiles.Remove(file); // Remove the file from the active files dictionary
                         }
-                        while (currentSize != lastCheckedFiles[file].size || currentLastModified != lastCheckedFiles[file].lastModified);
-
-                        Console.WriteLine($"File finished copying: {file}");
-                    });
+                    }
+                    catch (IOException)
+                    {
+                        // Failed to acquire a lock; file is still being written to
+                        continue;
+                    }
                 }
             }
 
-            lastCheckedFiles.Clear();
-            foreach (var file in currentFiles)
-            {
-                var fileInfo = new FileInfo(file);
-                lastCheckedFiles[file] = (fileInfo.Length, fileInfo.LastWriteTime);
-            }
-
-            await Task.Delay(5000); // Poll every 2 seconds
+            System.Threading.Thread.Sleep(2000); // Wait for 2 seconds before checking again
         }
     }
 }
